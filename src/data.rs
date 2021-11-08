@@ -188,3 +188,99 @@ pub fn fill(xs: &[DocCore]) -> DocCore {
         }
     }
 }
+
+// TODO: examples.
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[derive(Debug, PartialEq, Clone)]
+    pub enum Tree {
+        Node(String, Vec<Box<Tree>>),
+    }
+
+    pub fn show_tree(tree: Tree) -> DocCore {
+        match tree {
+            Tree::Node(s, ts) => group(append(text(s.clone()), nest(s.len(), show_bracket(&ts)))),
+        }
+    }
+
+    pub fn show_bracket(ts: &[Box<Tree>]) -> DocCore {
+        if ts.is_empty() {
+            nil()
+        } else {
+            append(
+                text(String::from("[")),
+                append(nest(1, show_trees(ts)), text(String::from("]"))),
+            )
+        }
+    }
+
+    pub fn show_trees(ts: &[Box<Tree>]) -> DocCore {
+        match ts.split_first() {
+            None => unreachable!("it's fun to dream"),
+            Some((t, &[])) => show_tree(*(*t).clone()),
+            Some((t, ts)) => append(
+                show_tree(*(*t).clone()),
+                append(text(String::from(",")), append(line(), show_trees(&ts))),
+            ),
+        }
+    }
+
+    pub fn show_tree_prime(tree: Tree) -> DocCore {
+        match tree {
+            Tree::Node(s, ts) => append(text(s.clone()), show_bracket_prime(&ts)),
+        }
+    }
+
+    pub fn show_bracket_prime(ts: &[Box<Tree>]) -> DocCore {
+        if ts.is_empty() {
+            nil()
+        } else {
+            bracket(String::from("["), show_trees_prime(&ts), String::from("]"))
+        }
+    }
+
+    pub fn show_trees_prime(ts: &[Box<Tree>]) -> DocCore {
+        match ts.split_first() {
+            None => unreachable!("it's fun to dream"),
+            Some((t, &[])) => show_tree(*(*t).clone()),
+            Some((t, ts)) => append(
+                show_tree(*(*t).clone()),
+                append(text(String::from(",")), append(line(), show_trees(&ts))),
+            ),
+        }
+    }
+
+    #[test]
+    fn test_tree() {
+        let tree = Tree::Node(
+            String::from("aaa"),
+            vec![
+                Tree::Node(
+                    String::from("bbbbb"),
+                    vec![
+                        Tree::Node(String::from("ccc"), vec![]).into(),
+                        Tree::Node(String::from("dd"), vec![]).into(),
+                    ],
+                )
+                .into(),
+                Tree::Node(String::from("eee"), vec![]).into(),
+                Tree::Node(
+                    String::from("ffff"),
+                    vec![
+                        Tree::Node(String::from("gg"), vec![]).into(),
+                        Tree::Node(String::from("hhh"), vec![]).into(),
+                        Tree::Node(String::from("ii"), vec![]).into(),
+                    ],
+                )
+                .into(),
+            ],
+        );
+        println!("{:#?}", show_tree(tree.clone()));
+        println!("{}", pretty(30, show_tree(tree.clone())));
+        println!("{}", pretty(30, show_tree_prime(tree.clone())));
+        assert!(false);
+    }
+}
