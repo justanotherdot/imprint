@@ -5,7 +5,7 @@ pub enum DocCore {
     Nest(usize, Box<DocCore>),
     Text(String),
     Line,
-    Alternate(Box<DocCore>, Box<DocCore>),
+    Union(Box<DocCore>, Box<DocCore>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -15,12 +15,13 @@ pub enum Doc {
     Line(usize, Box<Doc>),
 }
 
-// TODO: move to external module.
+// TODO: move to pretty module.
 
 pub fn nil() -> DocCore {
     DocCore::Nil
 }
 
+// append is right associative.
 pub fn append(x: DocCore, y: DocCore) -> DocCore {
     DocCore::Append(x.into(), y.into())
 }
@@ -49,7 +50,7 @@ pub fn flatten(x: DocCore) -> DocCore {
         Nest(i, x) => Nest(i, flatten(*x).into()),
         Text(s) => Text(s),
         Line => Text(String::from(" ")),
-        Alternate(x, _y) => flatten(*x),
+        Union(x, _y) => flatten(*x),
     }
 }
 
@@ -87,7 +88,7 @@ pub fn be(w: usize, k: usize, xs: &[(usize, DocCore)]) -> Doc {
         }
         Some(((_i, Text(s)), z)) => Doc::Text(s.clone(), be(w, k + s.len(), z).into()),
         Some(((i, Line), z)) => Doc::Line(*i, be(w, *i, z).into()),
-        Some(((i, Alternate(x, y)), z)) => {
+        Some(((i, Union(x, y)), z)) => {
             let mut zs1 = vec![(*i, *x.clone())];
             let mut zs2 = vec![(*i, *y.clone())];
             zs1.extend_from_slice(z);
@@ -120,4 +121,70 @@ pub fn fits(w: usize, x: Doc) -> bool {
 
 pub fn pretty(w: usize, x: DocCore) -> String {
     layout(best(w, 0, x))
+}
+
+// TODO: move to utilities module.
+
+pub fn space(x: DocCore, y: DocCore) -> DocCore {
+    append(x, append(text(String::from(" ")), y))
+}
+
+pub fn newline(x: DocCore, y: DocCore) -> DocCore {
+    append(x, append(line(), y))
+}
+
+pub fn fold_doc<F>(f: &F, xs: &[DocCore]) -> DocCore
+where
+    F: Fn(DocCore, DocCore) -> DocCore,
+{
+    match xs.split_first() {
+        None => nil(),
+        Some((x, &[])) => x.clone(),
+        Some((x, xs)) => f(x.clone(), fold_doc(f, xs)),
+    }
+}
+
+pub fn spread(xs: &[DocCore]) -> DocCore {
+    fold_doc(&space, xs)
+}
+
+pub fn stack(xs: &[DocCore]) -> DocCore {
+    fold_doc(&newline, xs)
+}
+
+pub fn bracket(l: String, x: DocCore, r: String) -> DocCore {
+    group(append(
+        text(l),
+        append(nest(2, append(line(), x)), append(line(), text(r))),
+    ))
+}
+
+pub fn space_newline(x: DocCore, y: DocCore) -> DocCore {
+    append(x, append(append(text(String::from(" ")), line()), y))
+}
+
+pub fn fill_words(s: String) -> DocCore {
+    fold_doc(
+        &space_newline,
+        &s.split(" ")
+            .map(|x| text(String::from(x)))
+            .collect::<Vec<_>>(),
+    )
+}
+
+pub fn fill(xs: &[DocCore]) -> DocCore {
+    match &xs {
+        &[] => nil(),
+        &[x] => x.clone(),
+        &[x, y, zs @ ..] => {
+            let mut plain_zs = vec![y.clone()];
+            let mut flattened_zs = vec![flatten(y.clone())];
+            plain_zs.extend_from_slice(zs);
+            flattened_zs.extend_from_slice(zs);
+            append(
+                space(flatten(x.clone()), fill(&flattened_zs)),
+                newline(x.clone(), fill(&plain_zs)),
+            )
+        }
+    }
 }
