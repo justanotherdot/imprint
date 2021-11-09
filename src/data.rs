@@ -2,7 +2,7 @@
 pub enum DocCore {
     Nil,
     Append(Box<DocCore>, Box<DocCore>),
-    Nest(usize, Box<DocCore>),
+    Nest(i64, Box<DocCore>),
     Text(String),
     Line,
     Union(Box<DocCore>, Box<DocCore>),
@@ -12,7 +12,7 @@ pub enum DocCore {
 pub enum Doc {
     Nil,
     Text(String, Box<Doc>),
-    Line(usize, Box<Doc>),
+    Line(i64, Box<Doc>),
 }
 
 // TODO: move to pretty module.
@@ -26,7 +26,7 @@ pub fn append(x: DocCore, y: DocCore) -> DocCore {
     DocCore::Append(x.into(), y.into())
 }
 
-pub fn nest(i: usize, x: DocCore) -> DocCore {
+pub fn nest(i: i64, x: DocCore) -> DocCore {
     DocCore::Nest(i, x.into())
 }
 
@@ -39,7 +39,7 @@ pub fn line() -> DocCore {
 }
 
 pub fn group(x: DocCore) -> DocCore {
-    flatten(DocCore::Append(x.clone().into(), x.clone().into()))
+    DocCore::Union(flatten(x.clone()).into(), x.clone().into())
 }
 
 pub fn flatten(x: DocCore) -> DocCore {
@@ -63,15 +63,18 @@ pub fn layout(x: Doc) -> String {
     }
 }
 
-pub fn copy(i: usize, x: &str) -> String {
-    std::iter::repeat(x).take(i).collect::<Vec<_>>().join("")
+pub fn copy(i: i64, x: &str) -> String {
+    std::iter::repeat(x)
+        .take(i as usize)
+        .collect::<Vec<_>>()
+        .join("")
 }
 
-pub fn best(w: usize, k: usize, x: DocCore) -> Doc {
+pub fn best(w: i64, k: i64, x: DocCore) -> Doc {
     be(w, k, &[(0, x)])
 }
 
-pub fn be(w: usize, k: usize, xs: &[(usize, DocCore)]) -> Doc {
+pub fn be(w: i64, k: i64, xs: &[(i64, DocCore)]) -> Doc {
     use DocCore::*;
     match xs.split_first() {
         None => Doc::Nil,
@@ -86,7 +89,7 @@ pub fn be(w: usize, k: usize, xs: &[(usize, DocCore)]) -> Doc {
             zs.extend_from_slice(z);
             be(w, k, &zs)
         }
-        Some(((_i, Text(s)), z)) => Doc::Text(s.clone(), be(w, k + s.len(), z).into()),
+        Some(((_i, Text(s)), z)) => Doc::Text(s.clone(), be(w, k + s.len() as i64, z).into()),
         Some(((i, Line), z)) => Doc::Line(*i, be(w, *i, z).into()),
         Some(((i, Union(x, y)), z)) => {
             let mut zs1 = vec![(*i, *x.clone())];
@@ -98,7 +101,7 @@ pub fn be(w: usize, k: usize, xs: &[(usize, DocCore)]) -> Doc {
     }
 }
 
-pub fn better(w: usize, k: usize, x: Doc, y: Doc) -> Doc {
+pub fn better(w: i64, k: i64, x: Doc, y: Doc) -> Doc {
     if fits(w - k, x.clone()) {
         x
     } else {
@@ -106,20 +109,20 @@ pub fn better(w: usize, k: usize, x: Doc, y: Doc) -> Doc {
     }
 }
 
-pub fn fits(w: usize, x: Doc) -> bool {
+pub fn fits(w: i64, x: Doc) -> bool {
     // NOTE: if we were using isize we'd keep this condition.
-    //if w < 0 {
-    //    return false;
-    //}
+    if w < 0 {
+        return false;
+    }
     use Doc::*;
     match x {
         Nil => true,
-        Text(s, x) => fits(w - s.len(), *x.clone()),
+        Text(s, x) => fits(w - s.len() as i64, *x.clone()),
         Line(_i, _x) => true,
     }
 }
 
-pub fn pretty(w: usize, x: DocCore) -> String {
+pub fn pretty(w: i64, x: DocCore) -> String {
     layout(best(w, 0, x))
 }
 
@@ -202,7 +205,10 @@ mod test {
 
     pub fn show_tree(tree: Tree) -> DocCore {
         match tree {
-            Tree::Node(s, ts) => group(append(text(s.clone()), nest(s.len(), show_bracket(&ts)))),
+            Tree::Node(s, ts) => group(append(
+                text(s.clone()),
+                nest(s.len() as i64, show_bracket(&ts)),
+            )),
         }
     }
 
@@ -253,9 +259,8 @@ mod test {
         }
     }
 
-    #[test]
-    fn test_tree() {
-        let tree = Tree::Node(
+    fn tree() -> Tree {
+        Tree::Node(
             String::from("aaa"),
             vec![
                 Tree::Node(
@@ -277,10 +282,16 @@ mod test {
                 )
                 .into(),
             ],
-        );
-        println!("{:#?}", show_tree(tree.clone()));
-        println!("{}", pretty(30, show_tree(tree.clone())));
-        println!("{}", pretty(30, show_tree_prime(tree.clone())));
-        assert!(false);
+        )
+    }
+
+    #[test]
+    fn show_tree_01() {
+        insta::assert_snapshot!(pretty(30, show_tree(tree())));
+    }
+
+    #[test]
+    fn show_tree_02() {
+        insta::assert_snapshot!(pretty(30, show_tree_prime(tree())));
     }
 }
