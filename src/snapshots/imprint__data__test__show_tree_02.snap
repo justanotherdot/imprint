@@ -1,0 +1,10 @@
+---
+source: src/data.rs
+expression: "pretty(30, show_tree_prime(tree()))"
+
+---
+aaa[
+  bbbbb[ccc, dd],
+  eee,
+  ffff[gg, hhh, ii]
+]

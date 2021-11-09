@@ -2,7 +2,7 @@
 pub enum DocCore {
     Nil,
     Append(Box<DocCore>, Box<DocCore>),
-    Nest(usize, Box<DocCore>),
+    Nest(i64, Box<DocCore>),
     Text(String),
     Line,
     Union(Box<DocCore>, Box<DocCore>),
@@ -12,7 +12,7 @@ pub enum DocCore {
 pub enum Doc {
     Nil,
     Text(String, Box<Doc>),
-    Line(usize, Box<Doc>),
+    Line(i64, Box<Doc>),
 }
 
 // TODO: move to pretty module.
@@ -26,7 +26,7 @@ pub fn append(x: DocCore, y: DocCore) -> DocCore {
     DocCore::Append(x.into(), y.into())
 }
 
-pub fn nest(i: usize, x: DocCore) -> DocCore {
+pub fn nest(i: i64, x: DocCore) -> DocCore {
     DocCore::Nest(i, x.into())
 }
 
@@ -39,7 +39,7 @@ pub fn line() -> DocCore {
 }
 
 pub fn group(x: DocCore) -> DocCore {
-    flatten(DocCore::Append(x.clone().into(), x.clone().into()))
+    DocCore::Union(flatten(x.clone()).into(), x.clone().into())
 }
 
 pub fn flatten(x: DocCore) -> DocCore {
@@ -63,15 +63,18 @@ pub fn layout(x: Doc) -> String {
     }
 }
 
-pub fn copy(i: usize, x: &str) -> String {
-    std::iter::repeat(x).take(i).collect::<Vec<_>>().join("")
+pub fn copy(i: i64, x: &str) -> String {
+    std::iter::repeat(x)
+        .take(i as usize)
+        .collect::<Vec<_>>()
+        .join("")
 }
 
-pub fn best(w: usize, k: usize, x: DocCore) -> Doc {
+pub fn best(w: i64, k: i64, x: DocCore) -> Doc {
     be(w, k, &[(0, x)])
 }
 
-pub fn be(w: usize, k: usize, xs: &[(usize, DocCore)]) -> Doc {
+pub fn be(w: i64, k: i64, xs: &[(i64, DocCore)]) -> Doc {
     use DocCore::*;
     match xs.split_first() {
         None => Doc::Nil,
@@ -86,7 +89,7 @@ pub fn be(w: usize, k: usize, xs: &[(usize, DocCore)]) -> Doc {
             zs.extend_from_slice(z);
             be(w, k, &zs)
         }
-        Some(((_i, Text(s)), z)) => Doc::Text(s.clone(), be(w, k + s.len(), z).into()),
+        Some(((_i, Text(s)), z)) => Doc::Text(s.clone(), be(w, k + s.len() as i64, z).into()),
         Some(((i, Line), z)) => Doc::Line(*i, be(w, *i, z).into()),
         Some(((i, Union(x, y)), z)) => {
             let mut zs1 = vec![(*i, *x.clone())];
@@ -98,7 +101,7 @@ pub fn be(w: usize, k: usize, xs: &[(usize, DocCore)]) -> Doc {
     }
 }
 
-pub fn better(w: usize, k: usize, x: Doc, y: Doc) -> Doc {
+pub fn better(w: i64, k: i64, x: Doc, y: Doc) -> Doc {
     if fits(w - k, x.clone()) {
         x
     } else {
@@ -106,20 +109,20 @@ pub fn better(w: usize, k: usize, x: Doc, y: Doc) -> Doc {
     }
 }
 
-pub fn fits(w: usize, x: Doc) -> bool {
+pub fn fits(w: i64, x: Doc) -> bool {
     // NOTE: if we were using isize we'd keep this condition.
-    //if w < 0 {
-    //    return false;
-    //}
+    if w < 0 {
+        return false;
+    }
     use Doc::*;
     match x {
         Nil => true,
-        Text(s, x) => fits(w - s.len(), *x.clone()),
+        Text(s, x) => fits(w - s.len() as i64, *x.clone()),
         Line(_i, _x) => true,
     }
 }
 
-pub fn pretty(w: usize, x: DocCore) -> String {
+pub fn pretty(w: i64, x: DocCore) -> String {
     layout(best(w, 0, x))
 }
 
@@ -186,5 +189,109 @@ pub fn fill(xs: &[DocCore]) -> DocCore {
                 newline(x.clone(), fill(&plain_zs)),
             )
         }
+    }
+}
+
+// TODO: examples.
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[derive(Debug, PartialEq, Clone)]
+    pub enum Tree {
+        Node(String, Vec<Box<Tree>>),
+    }
+
+    pub fn show_tree(tree: Tree) -> DocCore {
+        match tree {
+            Tree::Node(s, ts) => group(append(
+                text(s.clone()),
+                nest(s.len() as i64, show_bracket(&ts)),
+            )),
+        }
+    }
+
+    pub fn show_bracket(ts: &[Box<Tree>]) -> DocCore {
+        if ts.is_empty() {
+            nil()
+        } else {
+            append(
+                text(String::from("[")),
+                append(nest(1, show_trees(ts)), text(String::from("]"))),
+            )
+        }
+    }
+
+    pub fn show_trees(ts: &[Box<Tree>]) -> DocCore {
+        match ts.split_first() {
+            None => unreachable!("it's fun to dream"),
+            Some((t, &[])) => show_tree(*(*t).clone()),
+            Some((t, ts)) => append(
+                show_tree(*(*t).clone()),
+                append(text(String::from(",")), append(line(), show_trees(&ts))),
+            ),
+        }
+    }
+
+    pub fn show_tree_prime(tree: Tree) -> DocCore {
+        match tree {
+            Tree::Node(s, ts) => append(text(s.clone()), show_bracket_prime(&ts)),
+        }
+    }
+
+    pub fn show_bracket_prime(ts: &[Box<Tree>]) -> DocCore {
+        if ts.is_empty() {
+            nil()
+        } else {
+            bracket(String::from("["), show_trees_prime(&ts), String::from("]"))
+        }
+    }
+
+    pub fn show_trees_prime(ts: &[Box<Tree>]) -> DocCore {
+        match ts.split_first() {
+            None => unreachable!("it's fun to dream"),
+            Some((t, &[])) => show_tree(*(*t).clone()),
+            Some((t, ts)) => append(
+                show_tree(*(*t).clone()),
+                append(text(String::from(",")), append(line(), show_trees(&ts))),
+            ),
+        }
+    }
+
+    fn tree() -> Tree {
+        Tree::Node(
+            String::from("aaa"),
+            vec![
+                Tree::Node(
+                    String::from("bbbbb"),
+                    vec![
+                        Tree::Node(String::from("ccc"), vec![]).into(),
+                        Tree::Node(String::from("dd"), vec![]).into(),
+                    ],
+                )
+                .into(),
+                Tree::Node(String::from("eee"), vec![]).into(),
+                Tree::Node(
+                    String::from("ffff"),
+                    vec![
+                        Tree::Node(String::from("gg"), vec![]).into(),
+                        Tree::Node(String::from("hhh"), vec![]).into(),
+                        Tree::Node(String::from("ii"), vec![]).into(),
+                    ],
+                )
+                .into(),
+            ],
+        )
+    }
+
+    #[test]
+    fn show_tree_01() {
+        insta::assert_snapshot!(pretty(30, show_tree(tree())));
+    }
+
+    #[test]
+    fn show_tree_02() {
+        insta::assert_snapshot!(pretty(30, show_tree_prime(tree())));
     }
 }
